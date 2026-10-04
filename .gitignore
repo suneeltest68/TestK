@@ -15,3 +15,4 @@ build/
 local.properties
 token.json
 active_trades.json
+.env

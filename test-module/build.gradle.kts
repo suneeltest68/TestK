@@ -26,4 +26,5 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    implementation("io.github.cdimascio:dotenv-kotlin:6.4.1")
 }

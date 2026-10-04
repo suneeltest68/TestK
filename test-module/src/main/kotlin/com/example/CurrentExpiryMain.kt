@@ -4,18 +4,28 @@ import com.example.viewmodel.AuthViewModel
 import com.example.service.TradingWorkflowService
 import com.example.service.TelegramNotifier
 import com.example.util.AuthUtils
+import io.github.cdimascio.dotenv.dotenv
 import kotlinx.coroutines.runBlocking
 import java.util.Scanner
 
 fun main() {
+    val dotenv = dotenv {
+        ignoreIfMissing = true
+    }
     val viewModel = AuthViewModel()
     val workflowService = TradingWorkflowService(viewModel)
     val scanner = Scanner(System.`in`)
 
     println("=== Fyers API v3 Current Expiry ATM Options Flow (MVVM) ===")
-    val appId = System.getenv("FYERS_APP_ID")
-    val secretKey = System.getenv("FYERS_SECRET_KEY")
-    val redirectUri = System.getenv("FYERS_REDIRECT_URI")
+    val appId =
+        System.getenv("FYERS_APP_ID")
+            ?: dotenv["FYERS_APP_ID"]
+    val secretKey =
+        System.getenv("FYERS_SECRET_KEY")
+            ?: dotenv["FYERS_SECRET_KEY"]
+    val redirectUri =
+        System.getenv("FYERS_REDIRECT_URI")
+            ?: dotenv["FYERS_REDIRECT_URI"]
 
     // Check if we have a valid cached token
     val cachedToken = viewModel.getCachedToken()

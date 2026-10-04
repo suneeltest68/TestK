@@ -1,5 +1,7 @@
 package com.example.service
 
+import com.example.service.TelegramNotifier.dotenv
+import io.github.cdimascio.dotenv.dotenv
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -7,12 +9,30 @@ import java.net.URL
 import java.io.OutputStreamWriter
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import kotlin.text.get
 
 object TelegramNotifier {
     // Loaded securely from environment variables for production / server deployment
-    private val botToken: String get() = System.getenv("TELEGRAM_BOT_TOKEN") ?: "YOUR_BOT_TOKEN_HERE"
-    private val chatId: String get() = System.getenv("TELEGRAM_CHAT_ID") ?: "YOUR_CHAT_ID_HERE"
-    private val isEnabled: Boolean get() = System.getenv("TELEGRAM_ENABLED")?.toBoolean() ?: true
+    private val dotenv = dotenv {
+        ignoreIfMissing = true
+    }
+
+    private val botToken: String
+        get() = TelegramNotifier.get("TELEGRAM_BOT_TOKEN")
+            ?: "YOUR_BOT_TOKEN_HERE"
+
+    private val chatId: String
+        get() = TelegramNotifier.get("TELEGRAM_CHAT_ID")
+            ?: "YOUR_CHAT_ID_HERE"
+
+    private val isEnabled: Boolean
+        get() = TelegramNotifier.get("TELEGRAM_ENABLED")
+            ?.toBoolean()
+            ?: true
+
+    fun get(key: String): String? {
+        return System.getenv(key) ?: dotenv[key]
+    }
 
     suspend fun sendAlert(message: String) {
         if (!isEnabled || botToken == "YOUR_BOT_TOKEN_HERE" || chatId == "YOUR_CHAT_ID_HERE") {
