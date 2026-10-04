@@ -6,6 +6,7 @@ import org.json.JSONObject
 import java.io.File
 import java.time.LocalTime
 import java.time.ZoneId
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -15,10 +16,14 @@ class PaperTradingEngine(
     private val quantitiesMap: Map<String, Int>
 ) {
     private val stateFile = File("active_trades.json")
-    private val tradesMap = mutableMapOf<String, TradeState>()
+    private val tradesMap = ConcurrentHashMap<String, TradeState>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
     init {
+        // Start each trading session fresh by clearing any previous day's state file
+        if (stateFile.exists()) {
+            stateFile.delete()
+        }
         loadState()
         for ((symbol, gann) in symbolsGannMap) {
             val existing = tradesMap[symbol]
