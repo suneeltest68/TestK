@@ -9,6 +9,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.io.File
 import java.net.InetSocketAddress
 import java.time.ZonedDateTime
 import java.time.ZoneId
@@ -34,7 +35,7 @@ fun main() = runBlocking {
     val istZone = ZoneId.of("Asia/Kolkata")
 
     println("==================================================")
-    println("🚀 FYERS ALGO TRADING BOT - RAILWAY DAEMON (HTTP CALLBACK)")
+    println("🚀 FYERS ALGO TRADING BOT - RAILWAY DAEMON (24/7 WEB & CALLBACK)")
     println("==================================================")
 
     val appId = System.getenv("FYERS_APP_ID") ?: dotenv["FYERS_APP_ID"]
@@ -44,9 +45,68 @@ fun main() = runBlocking {
     val port = portStr.toIntOrNull() ?: 8080
 
     if (appId.isNullOrEmpty() || secretKey.isNullOrEmpty() || redirectUri.isNullOrEmpty()) {
-        println("❌ Error: Missing required Fyers environment variables (FYERS_APP_ID, FYERS_SECRET_KEY, FYERS_REDIRECT_URI).")
+        println("❌ Error: Missing required Fyers environment variables.")
         return@runBlocking
     }
+
+    var authCodeDeferred: CompletableDeferred<String>? = null
+
+    // Start 24/7 Background HTTP Server for Website Dashboard, API, and OAuth Callback
+    val server = HttpServer.create(InetSocketAddress(port), 0)
+    server.createContext("/") { exchange ->
+        val path = exchange.requestURI.path
+        try {
+            if (path == "/api/journal" || path == "/journal") {
+                val file = File("trading_journal.json")
+                val jsonStr = if (file.exists()) file.readText() else "{\"trades\":[],\"stats\":{}}"
+                exchange.responseHeaders.set("Content-Type", "application/json; charset=UTF-8")
+                exchange.responseHeaders.set("Access-Control-Allow-Origin", "*")
+                val bytes = jsonStr.toByteArray(StandardCharsets.UTF_8)
+                exchange.sendResponseHeaders(200, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
+            } else if (path == "/callback") {
+                val query = exchange.requestURI.query ?: ""
+                val queryParams = query.split("&").associate {
+                    val parts = it.split("=", limit = 2)
+                    if (parts.size == 2) {
+                        URLDecoder.decode(parts[0], StandardCharsets.UTF_8.name()) to 
+                        URLDecoder.decode(parts[1], StandardCharsets.UTF_8.name())
+                    } else {
+                        "" to ""
+                    }
+                }
+                val code = queryParams["s_code"] ?: queryParams["auth_code"] ?: queryParams["code"]
+                val responseHtml = if (!code.isNullOrEmpty()) {
+                    "<html><body style='font-family: Arial; text-align: center; margin-top: 50px;'><h1 style='color: green;'>✅ Fyers Authentication Successful!</h1><p>Authorization code received. You can now close this tab and return to Railway.</p></body></html>"
+                } else {
+                    "<html><body style='font-family: Arial; text-align: center; margin-top: 50px;'><h1 style='color: red;'>❌ Authentication Failed</h1><p>No authorization code found in callback query.</p></body></html>"
+                }
+                exchange.responseHeaders.set("Content-Type", "text/html; charset=UTF-8")
+                val bytes = responseHtml.toByteArray(StandardCharsets.UTF_8)
+                exchange.sendResponseHeaders(200, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
+
+                if (!code.isNullOrEmpty()) {
+                    authCodeDeferred?.complete(code)
+                }
+            } else {
+                // Serve Gann Trading Journal Dashboard (journal-web/index.html)
+                val file = File("journal-web/index.html")
+                val htmlStr = if (file.exists()) file.readText() else "<h1>Gann Trading Journal</h1><p>index.html not found.</p>"
+                exchange.responseHeaders.set("Content-Type", "text/html; charset=UTF-8")
+                val bytes = htmlStr.toByteArray(StandardCharsets.UTF_8)
+                exchange.sendResponseHeaders(200, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
+            }
+        } catch (e: Exception) {
+            val err = "Error: ${e.message}".toByteArray(StandardCharsets.UTF_8)
+            exchange.sendResponseHeaders(500, err.size.toLong())
+            exchange.responseBody.use { it.write(err) }
+        }
+    }
+    server.setExecutor(null)
+    server.start()
+    println("[HTTP Server] Running 24/7 on port $port (Dashboard: /, API: /api/journal, OAuth: /callback)")
 
     var isFirstRun = true
 
@@ -83,80 +143,25 @@ fun main() = runBlocking {
         }
 
         if (activeToken == null) {
-            println("[Auth] Access token expired or missing. Starting HTTP Callback Server for OAuth...")
+            println("[Auth] Access token expired or missing. Waiting for OAuth callback...")
             
             viewModel.prepareLoginUrl(appId, redirectUri)
             val loginUrl = viewModel.authState.value.loginUrl
             
             TelegramNotifier.sendAlert("⚠️ [Fyers Railway Daemon] Access Token expired or missing! Please login & authorize:\n$loginUrl")
 
-            // Start embedded HTTP server to capture OAuth callback
-            val authCodeDeferred = CompletableDeferred<String>()
-            val server = HttpServer.create(InetSocketAddress(port), 0)
-            
-            server.createContext("/callback") { exchange ->
-                try {
-                    val query = exchange.requestURI.query ?: ""
-                    val queryParams = query.split("&").associate {
-                        val parts = it.split("=", limit = 2)
-                        if (parts.size == 2) {
-                            URLDecoder.decode(parts[0], StandardCharsets.UTF_8.name()) to 
-                            URLDecoder.decode(parts[1], StandardCharsets.UTF_8.name())
-                        } else {
-                            "" to ""
-                        }
-                    }
-
-                    val code = queryParams["s_code"] ?: queryParams["auth_code"] ?: queryParams["code"]
-
-                    val responseHtml = if (!code.isNullOrEmpty()) {
-                        """
-                        <html>
-                        <body style="font-family: Arial; text-align: center; margin-top: 50px;">
-                            <h1 style="color: green;">✅ Fyers Authentication Successful!</h1>
-                            <p>Authorization code received. You can now close this tab and return to Railway.</p>
-                        </body>
-                        </html>
-                        """.trimIndent()
-                    } else {
-                        """
-                        <html>
-                        <body style="font-family: Arial; text-align: center; margin-top: 50px;">
-                            <h1 style="color: red;">❌ Authentication Failed</h1>
-                            <p>No authorization code found in callback query.</p>
-                        </body>
-                        </html>
-                        """.trimIndent()
-                    }
-
-                    exchange.responseHeaders.set("Content-Type", "text/html; charset=UTF-8")
-                    val responseBytes = responseHtml.toByteArray(StandardCharsets.UTF_8)
-                    exchange.sendResponseHeaders(200, responseBytes.size.toLong())
-                    exchange.responseBody.use { it.write(responseBytes) }
-
-                    if (!code.isNullOrEmpty()) {
-                        authCodeDeferred.complete(code)
-                    }
-                } catch (e: Exception) {
-                    println("[HTTP Server Error] ${e.message}")
-                }
-            }
-
-            server.setExecutor(null)
-            server.start()
-            println("[HTTP Server] Listening for OAuth callback on port $port (/callback)...")
+            authCodeDeferred = CompletableDeferred()
 
             // Wait until callback receives auth code (or timeout after 1 hour)
             val authCode = try {
                 withTimeout(60 * 60 * 1000L) {
-                    authCodeDeferred.await()
+                    authCodeDeferred?.await()
                 }
             } catch (_: Exception) {
                 null
             }
 
-            server.stop(0)
-            println("[HTTP Server] Stopped.")
+            authCodeDeferred = null
 
             if (authCode != null) {
                 println("[Auth] Exchanging received auth code for access token...")

@@ -56,15 +56,21 @@ class PaperTradingEngine(
         val now = LocalTime.now(istZone)
         val squareOffTime = LocalTime.of(15, 25)
         if (now.isAfter(squareOffTime) || now == squareOffTime) {
-            if (trade.status == "ACTIVE") {
-                val pnl = (ltp - trade.entryPrice) * trade.quantity
-                val msg = "[AUTO SQUARE-OFF] 3:25 PM EOD reached! Force exiting $symbol at LTP $ltp | P&L: ${String.format("%.2f", pnl)}"
-                println(msg)
-                scope.launch { TelegramNotifier.sendAlert(msg) }
-                
-                trade.status = "EXITED"
-                saveState()
-                checkAndSendEodSummary()
+            try {
+                if (trade.status == "ACTIVE") {
+                    val pnl = (ltp - trade.entryPrice) * trade.quantity
+                    val msg = "[AUTO SQUARE-OFF] 3:25 PM EOD reached! Force exiting $symbol at LTP $ltp | P&L: ${String.format("%.2f", pnl)}"
+                    println(msg)
+                    scope.launch { TelegramNotifier.sendAlert(msg) }
+                    
+                    TradingJournalService.logTrade(TradeJournalEntry(symbol, trade.entryPrice, ltp, trade.quantity, pnl, "AUTO_SQUARE_OFF"))
+
+                    trade.status = "EXITED"
+                    saveState()
+                    checkAndSendEodSummary()
+                }
+            } catch (e: Exception) {
+                TradingJournalService.logError("Auto Square-off error for $symbol: ${e.message}")
             }
             return
         }
@@ -87,13 +93,19 @@ class PaperTradingEngine(
             "ACTIVE" -> {
                 // 1. Check Stop Loss
                 if (ltp <= trade.stopLoss) {
-                    val pnl = (trade.stopLoss - trade.entryPrice) * trade.quantity
-                    val msg = "[STOP LOSS HIT] $symbol exited at SL: ${trade.stopLoss} | LTP: $ltp | Est P&L: ${String.format("%.2f", pnl)}"
-                    println(msg)
-                    scope.launch { TelegramNotifier.sendAlert(msg) }
+                    try {
+                        val pnl = (trade.stopLoss - trade.entryPrice) * trade.quantity
+                        val msg = "[STOP LOSS HIT] $symbol exited at SL: ${trade.stopLoss} | LTP: $ltp | Est P&L: ${String.format("%.2f", pnl)}"
+                        println(msg)
+                        scope.launch { TelegramNotifier.sendAlert(msg) }
 
-                    trade.status = "EXITED"
-                    saveState()
+                        TradingJournalService.logTrade(TradeJournalEntry(symbol, trade.entryPrice, trade.stopLoss, trade.quantity, pnl, "STOP_LOSS"))
+
+                        trade.status = "EXITED"
+                        saveState()
+                    } catch (e: Exception) {
+                        TradingJournalService.logError("Stop loss error for $symbol: ${e.message}")
+                    }
                     return
                 }
 
@@ -132,6 +144,7 @@ class PaperTradingEngine(
     private fun checkAndSendEodSummary() {
         val allExited = tradesMap.values.all { it.status == "EXITED" }
         if (allExited) {
+            val journalReport = TradingJournalService.getJournalReport()
             val summary = buildString {
                 append("📊 *END OF DAY P&L SUMMARY REPORT*\n\n")
                 var totalPnl = 0.0
@@ -140,7 +153,8 @@ class PaperTradingEngine(
                     totalPnl += pnl
                     append("• $sym: Entry ${tr.entryPrice} | Qty ${tr.quantity} | Final SL/Exit ${tr.stopLoss} | P&L: ${String.format("%.2f", pnl)}\n")
                 }
-                append("\n💰 *TOTAL P&L: ${String.format("%.2f", totalPnl)}*")
+                append("\n💰 *TOTAL P&L: ${String.format("%.2f", totalPnl)}*\n\n")
+                append(journalReport)
             }
             println(summary)
             scope.launch { TelegramNotifier.sendAlert(summary) }
