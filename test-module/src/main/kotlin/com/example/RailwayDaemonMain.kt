@@ -37,23 +37,30 @@ fun main() = runBlocking {
         return@runBlocking
     }
 
-    while (true) {
-        val now = ZonedDateTime.now(istZone)
-        val targetTimeToday = now.withHour(9).withMinute(0).withSecond(0).withNano(0)
+    var isFirstRun = true
 
-        val nextRun = if (now.isAfter(targetTimeToday)) {
-            targetTimeToday.plusDays(1)
+    while (true) {
+        if (!isFirstRun) {
+            val now = ZonedDateTime.now(istZone)
+            val targetTimeToday = now.withHour(9).withMinute(0).withSecond(0).withNano(0)
+
+            val nextRun = if (now.isAfter(targetTimeToday)) {
+                targetTimeToday.plusDays(1)
+            } else {
+                targetTimeToday
+            }
+
+            val delayMillis = Duration.between(now, nextRun).toMillis()
+            println("\n[Daemon] Next daily startup scheduled for: $nextRun (in ${delayMillis / 1000 / 60} minutes)")
+            
+            delay(delayMillis)
         } else {
-            targetTimeToday
+            println("\n[Daemon] First startup: Running trading session immediately...")
+            isFirstRun = false
         }
 
-        val delayMillis = Duration.between(now, nextRun).toMillis()
-        println("\n[Daemon] Next daily startup scheduled for: $nextRun (in ${delayMillis / 1000 / 60} minutes)")
-        
-        delay(delayMillis)
-
         println("\n--------------------------------------------------")
-        println("🌅 [Daily Routine] Starting 9:00 AM Trading Session...")
+        println("🌅 [Daily Routine] Starting Trading Session...")
         println("--------------------------------------------------")
 
         val cachedToken = viewModel.getCachedToken()
