@@ -13,4 +13,7 @@ application {
 
 dependencies {
     implementation(kotlin("stdlib"))
+    implementation(fileTree("libs").include("*.jar"))
+    implementation("org.json:json:20211205")
+    implementation(libs.kotlinx.coroutines)
 }
