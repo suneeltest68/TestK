@@ -29,11 +29,7 @@ class PaperTradingEngine(
                     status = "IDLE",
                     stopLoss = gann.stopLoss,
                     entryPrice = gann.buyPrice,
-                    targets = listOf(
-                        gann.target1, gann.target2, gann.target3,
-                        gann.target4, gann.target5, gann.target6,
-                        gann.target7, gann.target8, gann.target9, gann.target10
-                    ),
+                    targets = gann.targets,
                     quantity = qty
                 )
             } else {
@@ -41,11 +37,7 @@ class PaperTradingEngine(
                 if (existing.status == "IDLE") {
                     existing.stopLoss = gann.stopLoss
                 }
-                existing.targets = listOf(
-                    gann.target1, gann.target2, gann.target3,
-                    gann.target4, gann.target5, gann.target6,
-                    gann.target7, gann.target8, gann.target9, gann.target10
-                )
+                existing.targets = gann.targets
             }
         }
     }
@@ -75,7 +67,7 @@ class PaperTradingEngine(
         when (trade.status) {
             "IDLE" -> {
                 if (ltp >= trade.entryPrice) {
-                    val msg = "[TRADE PLACED - LIMIT BUY] $symbol at Entry: ${trade.entryPrice} | Qty: ${trade.quantity} | LTP: $ltp"
+                    val msg = "[TRADE PLACED ] $symbol at Entry: ${trade.entryPrice} | Qty: ${trade.quantity} | LTP: $ltp"
                     println(msg)
                     scope.launch { TelegramNotifier.sendAlert(msg) }
 
@@ -84,14 +76,7 @@ class PaperTradingEngine(
                     trade.entryTime = System.currentTimeMillis()
                     saveState()
                 } else {
-                    val msg = "[TRADE PLACED - STOP BUY] $symbol at Entry: ${trade.entryPrice} | Qty: ${trade.quantity} | LTP: $ltp"
-                    println(msg)
-                    scope.launch { TelegramNotifier.sendAlert(msg) }
-
-                    trade.status = "ACTIVE"
-                    trade.currentTpLevel = 0
-                    trade.entryTime = System.currentTimeMillis()
-                    saveState()
+                    // Price hasn't reached entry price yet; remain IDLE and wait for breakout tick
                 }
             }
             "ACTIVE" -> {
@@ -113,15 +98,12 @@ class PaperTradingEngine(
                     val nextTarget = targets[trade.currentTpLevel]
                     if (ltp >= nextTarget) {
                         trade.currentTpLevel++
-                        val msg = if (trade.currentTpLevel == 1) {
+                        if (trade.currentTpLevel == 1) {
                             trade.stopLoss = trade.entryPrice
-                            "[TARGET ${trade.currentTpLevel} HIT] $symbol reached TP1 ($nextTarget)! Trailing SL moved to Entry: ${trade.stopLoss}"
                         } else {
                             trade.stopLoss = targets[trade.currentTpLevel - 2]
-                            "[TARGET ${trade.currentTpLevel} HIT] $symbol reached TP${trade.currentTpLevel} ($nextTarget)! Trailing SL moved to TP${trade.currentTpLevel - 1}: ${trade.stopLoss}"
                         }
-                        println(msg)
-                        scope.launch { TelegramNotifier.sendAlert(msg) }
+                        println("[TARGET ${trade.currentTpLevel} HIT] $symbol reached TP${trade.currentTpLevel} ($nextTarget)! Trailing SL updated.")
                         saveState()
                     }
                 }

@@ -17,6 +17,17 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 fun main() = runBlocking {
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+        val stackTrace = throwable.stackTraceToString().take(1500)
+        val errorMessage = "🚨 [FATAL CRASH] Thread '${thread.name}' crashed:\n${throwable.message}\n\n$stackTrace"
+        println(errorMessage)
+        try {
+            runBlocking {
+                TelegramNotifier.sendAlert(errorMessage)
+            }
+        } catch (_: Exception) {}
+    }
+
     val dotenv = dotenv { ignoreIfMissing = true }
     val viewModel = AuthViewModel()
     val workflowService = TradingWorkflowService(viewModel)

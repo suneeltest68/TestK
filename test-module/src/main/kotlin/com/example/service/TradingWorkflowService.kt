@@ -8,6 +8,9 @@ import `in`.tts.hsjavalib.ChannelModes
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.Instant
@@ -247,7 +250,17 @@ class TradingWebSocketListener(
             println("WebSocket Subscribe Error: ${e.message}")
         }
     }
-    override fun OnClose(status: String?) { println("WebSocket Closed: $status") }
-    override fun OnError(error: JSONObject?) { println("WebSocket Error: $error") }
+    override fun OnClose(status: String?) {
+        println("WebSocket Closed: $status")
+        CoroutineScope(Dispatchers.IO).launch {
+            TelegramNotifier.sendAlert("⚠️ [WebSocket Closed] $status")
+        }
+    }
+    override fun OnError(error: JSONObject?) {
+        println("WebSocket Error: $error")
+        CoroutineScope(Dispatchers.IO).launch {
+            TelegramNotifier.sendAlert("❌ [WebSocket Error] $error")
+        }
+    }
     override fun OnMessage(message: JSONObject?) {}
 }
