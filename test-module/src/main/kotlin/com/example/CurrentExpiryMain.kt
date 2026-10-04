@@ -30,20 +30,11 @@ fun main() {
     // Check if we have a valid cached token
     val cachedToken = viewModel.getCachedToken()
     if (cachedToken != null) {
-        println("\n[Cache] Found cached Access Token! Validating session...")
-        val profile = runBlocking { viewModel.fetchProfile(appId, cachedToken) }
-        if (profile != null) {
-            println("\n[Cache] Token is valid. Skipping login flow.")
-            runBlocking {
-                workflowService.executeCurrentExpiryWorkflow(appId, cachedToken)
-            }
-            return
-        } else {
-            println("\n[Cache] Token expired or invalid. Alerting via Telegram...")
-            runBlocking {
-                TelegramNotifier.sendAlert("⚠️ [Fyers Bot] Access Token expired or invalid! Manual re-authentication required.")
-            }
+        println("\n[Cache] Found cached Access Token! Skipping login flow.")
+        runBlocking {
+            workflowService.executeCurrentExpiryWorkflow(appId, cachedToken)
         }
+        return
     } else {
         runBlocking {
             TelegramNotifier.sendAlert("⚠️ [Fyers Bot] No access token found! Manual re-authentication required.")

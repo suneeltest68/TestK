@@ -37,16 +37,6 @@ class AuthViewModel(private val repository: FyersRepository = FyersRepository())
         )
     }
 
-    suspend fun fetchProfile(appId: String, accessToken: String): JSONObject? {
-        return withContext(Dispatchers.IO) {
-            val result = repository.getProfile(appId, accessToken)
-            if (result.isFailure) {
-                println("Profile Error: ${result.exceptionOrNull()?.message}")
-            }
-            result.getOrNull()
-        }
-    }
-
     suspend fun fetchHistoricalData(appId: String, accessToken: String, symbol: String, resolution: String, rangeFrom: String, rangeTo: String): JSONObject? {
         return withContext(Dispatchers.IO) {
             val result = repository.getHistoricalData(appId, accessToken, symbol, resolution, rangeFrom, rangeTo)

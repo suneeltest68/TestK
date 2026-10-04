@@ -55,27 +55,6 @@ class FyersRepository {
         }
     }
 
-    fun getProfile(appId: String, accessToken: String): Result<JSONObject> {
-        return try {
-            val fyersClass = FyersClass.getInstance()
-            fyersClass.clientId = appId
-            fyersClass.accessToken = accessToken
-
-            // Using official SDK GetProfile() method returning Tuple<JSONObject, JSONObject>
-            val tuple = fyersClass.GetProfile()
-            val profileJson = tuple?.Item1()
-            val errorJson = tuple?.Item2()
-
-            if (errorJson == null && profileJson != null) {
-                Result.success(profileJson)
-            } else {
-                Result.failure(Exception("Profile Error: $errorJson"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
     fun getHistoricalData(appId: String, accessToken: String, symbol: String, resolution: String, rangeFrom: String, rangeTo: String): Result<JSONObject> {
         return try {
             val fyersClass = FyersClass.getInstance()

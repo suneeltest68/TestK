@@ -70,15 +70,6 @@ fun performLoginFlow(viewModel: AuthViewModel, scanner: Scanner, appId: String, 
 }
 
 suspend fun fetchUserDataAndHistory(viewModel: AuthViewModel, appId: String, token: String): Boolean {
-    // Step 3: Fetch Profile Info
-    println("\n[3] Fetching User Profile...")
-    val profile = viewModel.fetchProfile(appId, token)
-    if (profile == null) {
-        println("\nFailed to fetch profile info.")
-        return false
-    }
-    println("User: ${profile.optString("name")} (${profile.optString("fy_id")})")
-
     val targetDateStr = "2026-10-01"
 
     // Step 4: Get Nifty Sep 1st 2026 data & Open Price

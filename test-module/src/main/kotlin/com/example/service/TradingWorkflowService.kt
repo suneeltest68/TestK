@@ -21,15 +21,6 @@ class TradingWorkflowService(private val viewModel: AuthViewModel) {
     private val quantitiesMap = mutableMapOf<String, Int>()
 
     suspend fun executeCurrentExpiryWorkflow(appId: String, token: String) {
-        // Step 1: Fetch Profile Info
-        println("\n[1] Fetching User Profile...")
-        val profile = viewModel.fetchProfile(appId, token)
-        if (profile == null) {
-            println("\nFailed to fetch profile info.")
-            return
-        }
-        println("User: ${profile.optString("name")} (${profile.optString("fy_id")})")
-
         // Use today's date or fall back to latest trading day if live
         val targetDateStr = "2026-10-01"
         println("Target Execution Date: $targetDateStr")
@@ -144,7 +135,6 @@ class TradingWorkflowService(private val viewModel: AuthViewModel) {
         delay(200)
         val ceGann = calculateGannLevelsForSymbol(viewModel, appId, token, ceSymbol, priorTradingDate)
         if (ceGann != null) {
-            GannCalculator.printTable("$indexName ATM CALL (CE): $ceSymbol", ceGann)
             synchronized(symbolsGannMap) {
                 symbolsGannMap[ceSymbol] = ceGann
                 quantitiesMap[ceSymbol] = lotQuantity
@@ -154,7 +144,6 @@ class TradingWorkflowService(private val viewModel: AuthViewModel) {
         delay(200)
         val peGann = calculateGannLevelsForSymbol(viewModel, appId, token, peSymbol, priorTradingDate)
         if (peGann != null) {
-            GannCalculator.printTable("$indexName ATM PUT (PE): $peSymbol", peGann)
             synchronized(symbolsGannMap) {
                 symbolsGannMap[peSymbol] = peGann
                 quantitiesMap[peSymbol] = lotQuantity
@@ -221,13 +210,14 @@ class TradingWebSocketListener(
     private val subscribedSymbols: List<String>
 ) : FyersSocketDelegate {
 
+    private var fyersSocket: FyersSocket? = null
+
     fun start() {
         try {
-            val fyersSocket = FyersSocket(3)
-            fyersSocket.webSocketDelegate = this
-            fyersSocket.ConnectHSM(ChannelModes.LITE)
-            fyersSocket.SubscribeData(subscribedSymbols)
-            println("WebSocket subscribed to symbols: $subscribedSymbols")
+            fyersSocket = FyersSocket(3).apply {
+                webSocketDelegate = this@TradingWebSocketListener
+                ConnectHSM(ChannelModes.LITE)
+            }
         } catch (e: Exception) {
             println("WebSocket Start Error: ${e.message}")
         }
@@ -248,7 +238,15 @@ class TradingWebSocketListener(
     override fun OnOrder(orders: JSONObject?) {}
     override fun OnTrade(trades: JSONObject?) {}
     override fun OnPosition(positions: JSONObject?) {}
-    override fun OnOpen(status: String?) { println("WebSocket Connected: $status") }
+    override fun OnOpen(status: String?) {
+        println("WebSocket Connected: $status")
+        try {
+            fyersSocket?.SubscribeData(subscribedSymbols)
+            println("WebSocket subscribed to symbols: $subscribedSymbols")
+        } catch (e: Exception) {
+            println("WebSocket Subscribe Error: ${e.message}")
+        }
+    }
     override fun OnClose(status: String?) { println("WebSocket Closed: $status") }
     override fun OnError(error: JSONObject?) { println("WebSocket Error: $error") }
     override fun OnMessage(message: JSONObject?) {}

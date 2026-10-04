@@ -67,11 +67,8 @@ fun main() = runBlocking {
         var activeToken: String? = null
 
         if (cachedToken != null) {
-            val profile = viewModel.fetchProfile(appId, cachedToken)
-            if (profile != null) {
-                println("[Cache] Cached Access Token is valid.")
-                activeToken = cachedToken
-            }
+            println("[Cache] Using cached Access Token.")
+            activeToken = cachedToken
         }
 
         if (activeToken == null) {
