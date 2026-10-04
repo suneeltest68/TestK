@@ -2,24 +2,78 @@ package com.example
 
 import com.example.viewmodel.AuthViewModel
 import com.example.service.TradingWorkflowService
+import com.example.service.TelegramNotifier
+import com.example.util.AuthUtils
 import kotlinx.coroutines.runBlocking
+import java.util.Scanner
 
 fun main() {
     val viewModel = AuthViewModel()
     val workflowService = TradingWorkflowService(viewModel)
+    val scanner = Scanner(System.`in`)
 
     println("=== Fyers API v3 Current Expiry ATM Options Flow (MVVM) ===")
-    val appId = "QCLMTKB73R-100"
+    val appId = System.getenv("FYERS_APP_ID")
+    val secretKey = System.getenv("FYERS_SECRET_KEY")
+    val redirectUri = System.getenv("FYERS_REDIRECT_URI")
 
     // Check if we have a valid cached token
     val cachedToken = viewModel.getCachedToken()
     if (cachedToken != null) {
-        println("\n[Cache] Found valid cached Access Token! Skipping login flow.")
-        runBlocking {
-            workflowService.executeCurrentExpiryWorkflow(appId, cachedToken)
+        println("\n[Cache] Found cached Access Token! Validating session...")
+        val profile = runBlocking { viewModel.fetchProfile(appId, cachedToken) }
+        if (profile != null) {
+            println("\n[Cache] Token is valid. Skipping login flow.")
+            runBlocking {
+                workflowService.executeCurrentExpiryWorkflow(appId, cachedToken)
+            }
+            return
+        } else {
+            println("\n[Cache] Token expired or invalid. Alerting via Telegram...")
+            runBlocking {
+                TelegramNotifier.sendAlert("⚠️ [Fyers Bot] Access Token expired or invalid! Manual re-authentication required.")
+            }
         }
-        return
+    } else {
+        runBlocking {
+            TelegramNotifier.sendAlert("⚠️ [Fyers Bot] No access token found! Manual re-authentication required.")
+        }
     }
 
-    println("No cached token found. Please run Main.kt first to generate and cache your access token.")
+    viewModel.prepareLoginUrl(appId, redirectUri)
+    val loginUrl = viewModel.authState.value.loginUrl
+
+    // Send Telegram alert with login URL
+    runBlocking {
+        TelegramNotifier.sendAlert("⚠️ [Fyers Bot] Please click the link below to login and authorize:\n$loginUrl")
+    }
+
+    print("Paste either the full redirect URL or the 'auth_code': ")
+    var input = scanner.nextLine().trim()
+    while (input.isEmpty()) {
+        print("Input cannot be empty. Please paste the redirect URL or auth_code: ")
+        input = scanner.nextLine().trim()
+    }
+
+    val authCode = AuthUtils.extractAuthCode(input)
+
+    println("\n[2] Exchanging auth code for access token...")
+    runBlocking {
+        viewModel.authenticateWithAuthCode(appId, secretKey, authCode)
+    }
+
+    val finalState = viewModel.authState.value
+    if (finalState.accessToken != null) {
+        println("\nSUCCESS! Access Token acquired and cached.")
+        runBlocking {
+            TelegramNotifier.sendAlert("✅ [Fyers Bot] Access Token refreshed & cached successfully! Starting trading workflow...")
+            workflowService.executeCurrentExpiryWorkflow(appId, finalState.accessToken)
+        }
+    } else {
+        val errorMsg = finalState.errorMessage ?: "Unknown error"
+        println("\nFAILED: $errorMsg")
+        runBlocking {
+            TelegramNotifier.sendAlert("❌ [Fyers Bot] Authentication failed: $errorMsg")
+        }
+    }
 }

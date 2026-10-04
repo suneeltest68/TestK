@@ -6,6 +6,9 @@ import org.json.JSONObject
 import java.io.File
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class PaperTradingEngine(
     private val symbolsGannMap: Map<String, GannLevels>,
@@ -13,12 +16,14 @@ class PaperTradingEngine(
 ) {
     private val stateFile = File("active_trades.json")
     private val tradesMap = mutableMapOf<String, TradeState>()
+    private val scope = CoroutineScope(Dispatchers.IO)
 
     init {
         loadState()
         for ((symbol, gann) in symbolsGannMap) {
-            if (!tradesMap.containsKey(symbol)) {
-                val qty = quantitiesMap[symbol] ?: 1
+            val existing = tradesMap[symbol]
+            val qty = quantitiesMap[symbol] ?: 1
+            if (existing == null) {
                 tradesMap[symbol] = TradeState(
                     symbol = symbol,
                     status = "IDLE",
@@ -30,6 +35,16 @@ class PaperTradingEngine(
                         gann.target7, gann.target8, gann.target9, gann.target10
                     ),
                     quantity = qty
+                )
+            } else {
+                existing.entryPrice = gann.buyPrice
+                if (existing.status == "IDLE") {
+                    existing.stopLoss = gann.stopLoss
+                }
+                existing.targets = listOf(
+                    gann.target1, gann.target2, gann.target3,
+                    gann.target4, gann.target5, gann.target6,
+                    gann.target7, gann.target8, gann.target9, gann.target10
                 )
             }
         }
@@ -45,9 +60,14 @@ class PaperTradingEngine(
         val squareOffTime = LocalTime.of(15, 25)
         if (now.isAfter(squareOffTime) || now == squareOffTime) {
             if (trade.status == "ACTIVE") {
-                println("[AUTO SQUARE-OFF] 3:25 PM EOD reached! Force exiting $symbol at LTP $ltp")
+                val pnl = (ltp - trade.entryPrice) * trade.quantity
+                val msg = "[AUTO SQUARE-OFF] 3:25 PM EOD reached! Force exiting $symbol at LTP $ltp | P&L: ${String.format("%.2f", pnl)}"
+                println(msg)
+                scope.launch { TelegramNotifier.sendAlert(msg) }
+                
                 trade.status = "EXITED"
                 saveState()
+                checkAndSendEodSummary()
             }
             return
         }
@@ -55,13 +75,19 @@ class PaperTradingEngine(
         when (trade.status) {
             "IDLE" -> {
                 if (ltp >= trade.entryPrice) {
-                    println("[PAPER TRADE] [$symbol] LTP ($ltp) >= Buy Price (${trade.entryPrice}) -> Placing LIMIT BUY ORDER for ${trade.quantity} qty")
+                    val msg = "[TRADE PLACED - LIMIT BUY] $symbol at Entry: ${trade.entryPrice} | Qty: ${trade.quantity} | LTP: $ltp"
+                    println(msg)
+                    scope.launch { TelegramNotifier.sendAlert(msg) }
+
                     trade.status = "ACTIVE"
                     trade.currentTpLevel = 0
                     trade.entryTime = System.currentTimeMillis()
                     saveState()
                 } else {
-                    println("[PAPER TRADE] [$symbol] LTP ($ltp) < Buy Price (${trade.entryPrice}) -> Placing STOP BUY ORDER (Buy Stop) for ${trade.quantity} qty")
+                    val msg = "[TRADE PLACED - STOP BUY] $symbol at Entry: ${trade.entryPrice} | Qty: ${trade.quantity} | LTP: $ltp"
+                    println(msg)
+                    scope.launch { TelegramNotifier.sendAlert(msg) }
+
                     trade.status = "ACTIVE"
                     trade.currentTpLevel = 0
                     trade.entryTime = System.currentTimeMillis()
@@ -71,7 +97,11 @@ class PaperTradingEngine(
             "ACTIVE" -> {
                 // 1. Check Stop Loss
                 if (ltp <= trade.stopLoss) {
-                    println("[PAPER TRADE] [$symbol] STOP LOSS HIT! LTP ($ltp) <= SL (${trade.stopLoss}) -> EXITING TRADE.")
+                    val pnl = (trade.stopLoss - trade.entryPrice) * trade.quantity
+                    val msg = "[STOP LOSS HIT] $symbol exited at SL: ${trade.stopLoss} | LTP: $ltp | Est P&L: ${String.format("%.2f", pnl)}"
+                    println(msg)
+                    scope.launch { TelegramNotifier.sendAlert(msg) }
+
                     trade.status = "EXITED"
                     saveState()
                     return
@@ -83,26 +113,25 @@ class PaperTradingEngine(
                     val nextTarget = targets[trade.currentTpLevel]
                     if (ltp >= nextTarget) {
                         trade.currentTpLevel++
-                        println("[PAPER TRADE] [$symbol] TARGET ${trade.currentTpLevel} HIT! LTP ($ltp) >= TP${trade.currentTpLevel} ($nextTarget)")
-
-                        // Trailing SL mechanism:
-                        // TP1 hit -> Move SL to Buy Price (Entry)
-                        // TP2 hit -> Move SL to TP1, etc.
-                        if (trade.currentTpLevel == 1) {
+                        val msg = if (trade.currentTpLevel == 1) {
                             trade.stopLoss = trade.entryPrice
-                            println("[PAPER TRADE] [$symbol] Trailing SL moved to Entry Price: ${trade.stopLoss}")
+                            "[TARGET ${trade.currentTpLevel} HIT] $symbol reached TP1 ($nextTarget)! Trailing SL moved to Entry: ${trade.stopLoss}"
                         } else {
                             trade.stopLoss = targets[trade.currentTpLevel - 2]
-                            println("[PAPER TRADE] [$symbol] Trailing SL moved to TP${trade.currentTpLevel - 1}: ${trade.stopLoss}")
+                            "[TARGET ${trade.currentTpLevel} HIT] $symbol reached TP${trade.currentTpLevel} ($nextTarget)! Trailing SL moved to TP${trade.currentTpLevel - 1}: ${trade.stopLoss}"
                         }
+                        println(msg)
+                        scope.launch { TelegramNotifier.sendAlert(msg) }
                         saveState()
                     }
                 }
             }
             "EXITED" -> {
-                // Re-entry logic: If LTP comes again to buyPrice and no active trade is running
                 if (ltp >= trade.entryPrice) {
-                    println("[PAPER TRADE] [$symbol] RE-ENTRY TRIGGERED! LTP ($ltp) returned to Buy Price (${trade.entryPrice}) -> Re-opening trade.")
+                    val msg = "[RE-ENTRY TRIGGERED] $symbol re-opened at Buy Price: ${trade.entryPrice} | LTP: $ltp"
+                    println(msg)
+                    scope.launch { TelegramNotifier.sendAlert(msg) }
+
                     trade.status = "ACTIVE"
                     trade.stopLoss = gann.stopLoss
                     trade.currentTpLevel = 0
@@ -110,6 +139,24 @@ class PaperTradingEngine(
                     saveState()
                 }
             }
+        }
+    }
+
+    private fun checkAndSendEodSummary() {
+        val allExited = tradesMap.values.all { it.status == "EXITED" }
+        if (allExited) {
+            val summary = buildString {
+                append("📊 *END OF DAY P&L SUMMARY REPORT*\n\n")
+                var totalPnl = 0.0
+                for ((sym, tr) in tradesMap) {
+                    val pnl = (tr.stopLoss - tr.entryPrice) * tr.quantity
+                    totalPnl += pnl
+                    append("• $sym: Entry ${tr.entryPrice} | Qty ${tr.quantity} | Final SL/Exit ${tr.stopLoss} | P&L: ${String.format("%.2f", pnl)}\n")
+                }
+                append("\n💰 *TOTAL P&L: ${String.format("%.2f", totalPnl)}*")
+            }
+            println(summary)
+            scope.launch { TelegramNotifier.sendAlert(summary) }
         }
     }
 

@@ -13,3 +13,5 @@ build/
 .externalNativeBuild
 .cxx
 local.properties
+token.json
+active_trades.json

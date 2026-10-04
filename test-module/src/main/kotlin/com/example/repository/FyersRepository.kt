@@ -19,7 +19,7 @@ class FyersRepository {
         } catch (_: Exception) {
             // Ignore
         }
-        return "https://api.fyers.in/api/v3/generate-authcode?client_id=$appId&redirect_uri=$redirectUri&response_type=code&state=sample_state"
+        return "https://api-t1.fyers.in/api/v3/generate-authcode?client_id=$appId&redirect_uri=$redirectUri&response_type=code&state=sample_state"
     }
 
     fun exchangeAuthCodeForToken(appId: String, secretKey: String, authCode: String): Result<String> {

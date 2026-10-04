@@ -1,19 +1,18 @@
 package com.example
 
 import com.example.viewmodel.AuthViewModel
+import com.example.util.AuthUtils
 import kotlinx.coroutines.runBlocking
 import java.util.Scanner
-import java.net.URI
-import java.net.URLDecoder
 
 fun main() {
     val viewModel = AuthViewModel()
     val scanner = Scanner(System.`in`)
 
     println("=== Fyers API v3 Expired F&O Workflow (MVVM) ===")
-    val appId = "QCLMTKB73R-100"
-    val secretKey = "RWLN4NNE8N"
-    val redirectUri = "https://redirect-service-algo.onrender.com/"
+    val appId = System.getenv("FYERS_APP_ID")
+    val secretKey = System.getenv("FYERS_SECRET_KEY")
+    val redirectUri = System.getenv("FYERS_REDIRECT_URI")
 
     // Check if we have a valid cached token
     val cachedToken = viewModel.getCachedToken()
@@ -42,7 +41,7 @@ fun performLoginFlow(viewModel: AuthViewModel, scanner: Scanner, appId: String, 
         input = scanner.nextLine().trim()
     }
 
-    val authCode = extractAuthCode(input)
+    val authCode = AuthUtils.extractAuthCode(input)
 
     println("\n[2] Exchanging auth code for access token...")
     runBlocking {
@@ -72,7 +71,7 @@ suspend fun fetchUserDataAndHistory(viewModel: AuthViewModel, appId: String, tok
 
     val targetDateStr = "2026-10-01"
 
-    // Step 4: Get Nifty Oct 1st 2026 data & Open Price
+    // Step 4: Get Nifty Sep 1st 2026 data & Open Price
     println("\n[4] Fetching Nifty 50 Index Data for $targetDateStr...")
     val niftyHistory = viewModel.fetchHistoricalData(
         appId = appId,
@@ -132,7 +131,7 @@ suspend fun fetchUserDataAndHistory(viewModel: AuthViewModel, appId: String, tok
         }
     }
 
-    // Step 7: Get Expired Contracts for Target Expiry
+    // Step 7: Get Expired Contracts for Target Expity
     println("\n[7] Fetching Underlying Expired Contracts for Expiry: $targetExpiry...")
     val contractsJson = viewModel.fetchHistoryUnderlyingSymbols(
         appId = appId,
@@ -184,30 +183,4 @@ suspend fun fetchUserDataAndHistory(viewModel: AuthViewModel, appId: String, tok
     }
 
     return true
-}
-
-fun extractAuthCode(input: String): String {
-    val trimmed = input.trim()
-    if (!trimmed.contains("auth_code=")) {
-        return trimmed
-    }
-    return try {
-        val uri = URI(if (trimmed.contains("?")) trimmed else trimmed.replaceFirst("/", "/?"))
-        val query = uri.query ?: ""
-        for (pair in query.split("&")) {
-            val idx = pair.indexOf("=")
-            if (idx > 0) {
-                val key = pair.substring(0, idx)
-                val value = pair.substring(idx + 1)
-                if (key == "auth_code") {
-                    return URLDecoder.decode(value, "UTF-8")
-                }
-            }
-        }
-        trimmed
-    } catch (_: Exception) {
-        val regex = "auth_code=([^&]+)".toRegex()
-        val match = regex.find(trimmed)
-        match?.groupValues?.get(1) ?: trimmed
-    }
 }
