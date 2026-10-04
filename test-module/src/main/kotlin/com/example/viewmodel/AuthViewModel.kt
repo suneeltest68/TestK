@@ -67,6 +67,36 @@ class AuthViewModel(private val repository: FyersRepository = FyersRepository())
         }
     }
 
+    suspend fun fetchHistoryExpiryDates(appId: String, accessToken: String, symbol: String, rangeFrom: String, rangeTo: String): JSONObject? {
+        return withContext(Dispatchers.IO) {
+            val result = repository.getHistoryExpiryDates(appId, accessToken, symbol, rangeFrom, rangeTo)
+            if (result.isFailure) {
+                println("Expiry Dates Error: ${result.exceptionOrNull()?.message}")
+            }
+            result.getOrNull()
+        }
+    }
+
+    suspend fun fetchHistoryUnderlyingSymbols(appId: String, accessToken: String, symbol: String, expiryDate: String): JSONObject? {
+        return withContext(Dispatchers.IO) {
+            val result = repository.getHistoryUnderlyingSymbols(appId, accessToken, symbol, expiryDate)
+            if (result.isFailure) {
+                println("Underlying Symbols Error: ${result.exceptionOrNull()?.message}")
+            }
+            result.getOrNull()
+        }
+    }
+
+    suspend fun fetchHistoryFNOExpired(appId: String, accessToken: String, fnoSymbol: String, rangeFrom: String, rangeTo: String, resolution: String): JSONObject? {
+        return withContext(Dispatchers.IO) {
+            val result = repository.getHistoryFNOExpired(appId, accessToken, fnoSymbol, rangeFrom, rangeTo, resolution)
+            if (result.isFailure) {
+                println("FNO Expired History Error for $fnoSymbol: ${result.exceptionOrNull()?.message}")
+            }
+            result.getOrNull()
+        }
+    }
+
     fun getCachedToken(): String? {
         return repository.getCachedToken()
     }

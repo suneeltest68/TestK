@@ -2,6 +2,7 @@ package com.example.repository
 
 import com.tts.`in`.model.FyersClass
 import com.tts.`in`.model.StockHistoryModel
+import com.tts.`in`.model.HistoryFNOExpiredModel
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.io.File
@@ -119,6 +120,75 @@ class FyersRepository {
             } else {
                 val errorMsg = errorJson?.toString() ?: "Unknown error"
                 Result.failure(Exception("Option Chain Error: $errorMsg"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun getHistoryExpiryDates(appId: String, accessToken: String, symbol: String, rangeFrom: String, rangeTo: String): Result<JSONObject> {
+        return try {
+            val fyersClass = FyersClass.getInstance()
+            fyersClass.clientId = appId
+            fyersClass.accessToken = accessToken
+
+            val tuple = fyersClass.GetHistoryExpiryDates(symbol, rangeFrom, rangeTo, 1)
+            val json = tuple?.Item1()
+            val error = tuple?.Item2()
+
+            if (error == null && json != null) {
+                Result.success(json)
+            } else {
+                Result.failure(Exception("Expiry Dates Error: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun getHistoryUnderlyingSymbols(appId: String, accessToken: String, symbol: String, expiryDate: String): Result<JSONObject> {
+        return try {
+            val fyersClass = FyersClass.getInstance()
+            fyersClass.clientId = appId
+            fyersClass.accessToken = accessToken
+
+            val tuple = fyersClass.GetHistoryUnderlyingSymbols(symbol, expiryDate)
+            val json = tuple?.Item1()
+            val error = tuple?.Item2()
+
+            if (error == null && json != null) {
+                Result.success(json)
+            } else {
+                Result.failure(Exception("Underlying Symbols Error: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun getHistoryFNOExpired(appId: String, accessToken: String, fnoSymbol: String, rangeFrom: String, rangeTo: String, resolution: String): Result<JSONObject> {
+        return try {
+            val fyersClass = FyersClass.getInstance()
+            fyersClass.clientId = appId
+            fyersClass.accessToken = accessToken
+
+            val model = HistoryFNOExpiredModel().apply {
+                Symbol = fnoSymbol
+                Resolution = resolution
+                DateFormat = "1"
+                RangeFrom = rangeFrom
+                RangeTo = rangeTo
+                Greeks = 1
+            }
+
+            val tuple = fyersClass.GetHistoryFNOExpired(model)
+            val json = tuple?.Item1()
+            val error = tuple?.Item2()
+
+            if (error == null && json != null) {
+                Result.success(json)
+            } else {
+                Result.failure(Exception("FNO Expired History Error: $error"))
             }
         } catch (e: Exception) {
             Result.failure(e)

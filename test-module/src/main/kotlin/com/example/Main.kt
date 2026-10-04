@@ -10,7 +10,7 @@ fun main() {
     val viewModel = AuthViewModel()
     val scanner = Scanner(System.`in`)
 
-    println("=== Fyers API v3 Authentication, Profile, Option Chain & History Flow (MVVM) ===")
+    println("=== Fyers API v3 Expired F&O Workflow (MVVM) ===")
     val appId = "QCLMTKB73R-100"
     val secretKey = "RWLN4NNE8N"
     val redirectUri = "https://redirect-service-algo.onrender.com/"
@@ -19,8 +19,6 @@ fun main() {
     val cachedToken = viewModel.getCachedToken()
     if (cachedToken != null) {
         println("\n[Cache] Found valid cached Access Token! Skipping login flow.")
-        println("Access Token: $cachedToken")
-
         val success = runBlocking {
             fetchUserDataAndHistory(viewModel, appId, cachedToken)
         }
@@ -35,7 +33,6 @@ fun main() {
 }
 
 fun performLoginFlow(viewModel: AuthViewModel, scanner: Scanner, appId: String, secretKey: String, redirectUri: String) {
-    // Step 1: Generate Login URL only when login is needed
     viewModel.prepareLoginUrl(appId, redirectUri)
 
     print("Paste either the full redirect URL or the 'auth_code': ")
@@ -47,7 +44,6 @@ fun performLoginFlow(viewModel: AuthViewModel, scanner: Scanner, appId: String, 
 
     val authCode = extractAuthCode(input)
 
-    // Step 2: Exchange Auth Code for Access Token
     println("\n[2] Exchanging auth code for access token...")
     runBlocking {
         viewModel.authenticateWithAuthCode(appId, secretKey, authCode)
@@ -55,9 +51,7 @@ fun performLoginFlow(viewModel: AuthViewModel, scanner: Scanner, appId: String, 
 
     val finalState = viewModel.authState.value
     if (finalState.accessToken != null) {
-        println("\nSUCCESS! Access Token acquired and cached:")
-        println(finalState.accessToken)
-
+        println("\nSUCCESS! Access Token acquired and cached.")
         runBlocking {
             fetchUserDataAndHistory(viewModel, appId, finalState.accessToken)
         }
@@ -74,54 +68,119 @@ suspend fun fetchUserDataAndHistory(viewModel: AuthViewModel, appId: String, tok
         println("\nFailed to fetch profile info.")
         return false
     }
+    println("User: ${profile.optString("name")} (${profile.optString("fy_id")})")
 
-    println("\nUSER PROFILE INFO:")
-    println(profile.toString(4))
+    val targetDateStr = "2026-10-01"
 
-    // Step 4: Fetch Nifty 50 Index Historical Data
-    println("\n[4] Fetching Nifty 50 Index Historical Data (30-Sep-2026 to 01-Oct-2026)...")
-    val history = viewModel.fetchHistoricalData(
+    // Step 4: Get Nifty Oct 1st 2026 data & Open Price
+    println("\n[4] Fetching Nifty 50 Index Data for $targetDateStr...")
+    val niftyHistory = viewModel.fetchHistoricalData(
         appId = appId,
         accessToken = token,
         symbol = "NSE:NIFTY50-INDEX",
         resolution = "D",
-        rangeFrom = "2026-09-30",
-        rangeTo = "2026-10-01"
+        rangeFrom = targetDateStr,
+        rangeTo = targetDateStr
     )
-    if (history != null) {
-        println("\nNIFTY 50 INDEX HISTORICAL DATA:")
-        println(history.toString(4))
+
+    var openPrice = 22555.0 // Default fallback based on user example
+    if (niftyHistory != null && niftyHistory.has("candles")) {
+        val candles = niftyHistory.getJSONArray("candles")
+        if (candles.length() > 0) {
+            val candle = candles.getJSONArray(0)
+            openPrice = candle.getDouble(1)
+            println("Nifty $targetDateStr OPEN PRICE: $openPrice")
+        }
     } else {
-        println("\nFailed to fetch Nifty index historical data.")
+        println("Using default Open Price: $openPrice")
     }
 
-    // Step 5: Fetch Option Chain to find Nifty 22500 PE Symbol
-    println("\n[5] Fetching Nifty Option Chain...")
-    val optionChain = viewModel.fetchOptionChain(appId, token, "NSE:NIFTY50-INDEX", 10)
-    if (optionChain != null) {
-        println("\nNIFTY OPTION CHAIN (Preview):")
-        println(optionChain.toString(4).take(1000) + "\n... [truncated]")
-    } else {
-        println("\nFailed to fetch option chain.")
-    }
+    // Step 5: Calculate ATM Strike (nearest 50)
+    val atmStrike = Math.round(openPrice / 50.0) * 50
+    println("Calculated ATM Strike: $atmStrike")
 
-    // Step 6: Fetch Nifty 22500 PE Historical Data
-    // Note: Fyers option symbol format e.g. NSE:NIFTY2693022500PE or derived from option chain
-    val peSymbol = "NSE:NIFTY26O0622500PE"
-    println("\n[6] Fetching Nifty 22500 PE Historical Data ($peSymbol) (30-Sep-2026 to 01-Oct-2026)...")
-    val peHistory = viewModel.fetchHistoricalData(
+    // Step 6: Get Expiry Dates (Note: Fyers requires range_to to be strictly in the past)
+    println("\n[6] Fetching Expiry Dates for Nifty...")
+    val expiryDatesJson = viewModel.fetchHistoryExpiryDates(
         appId = appId,
         accessToken = token,
-        symbol = peSymbol,
-        resolution = "D",
-        rangeFrom = "2026-09-30",
-        rangeTo = "2026-10-01"
+        symbol = "NSE:NIFTY50-INDEX",
+        rangeFrom = "2026-08-01",
+        rangeTo = "2026-09-30"
+    )
+
+    var targetExpiry = "2026-09-03"
+    if (expiryDatesJson != null && expiryDatesJson.has("data")) {
+        val dataObj = expiryDatesJson.getJSONObject("data")
+        if (dataObj.has("expiry_dates")) {
+            val optionsExpiries = dataObj.getJSONObject("expiry_dates").optJSONArray("options")
+            if (optionsExpiries != null) {
+                var found = false
+                for (i in 0 until optionsExpiries.length()) {
+                    val expDate = optionsExpiries.getString(i)
+                    if (expDate >= targetDateStr) {
+                        targetExpiry = expDate
+                        found = true
+                        break
+                    }
+                }
+                if (!found && optionsExpiries.length() > 0) {
+                    targetExpiry = optionsExpiries.getString(optionsExpiries.length() - 1)
+                }
+                println("Selected Nearest Subsequent Expiry Date: $targetExpiry (for data date: $targetDateStr)")
+            }
+        }
+    }
+
+    // Step 7: Get Expired Contracts for Target Expiry
+    println("\n[7] Fetching Underlying Expired Contracts for Expiry: $targetExpiry...")
+    val contractsJson = viewModel.fetchHistoryUnderlyingSymbols(
+        appId = appId,
+        accessToken = token,
+        symbol = "NSE:NIFTY50-INDEX",
+        expiryDate = targetExpiry
+    )
+
+    var ceSymbol = ""
+    var peSymbol = ""
+    if (contractsJson != null && contractsJson.has("data")) {
+        val dataObj = contractsJson.getJSONObject("data")
+        if (dataObj.has("contracts")) {
+            val optionsArray = dataObj.getJSONObject("contracts").optJSONArray("options")
+            if (optionsArray != null) {
+                val strikeStr = atmStrike.toInt().toString()
+                for (i in 0 until optionsArray.length()) {
+                    val sym = optionsArray.getString(i)
+                    if (sym.contains(strikeStr)) {
+                        if (sym.endsWith("CE") && ceSymbol.isEmpty()) ceSymbol = sym
+                        if (sym.endsWith("PE") && peSymbol.isEmpty()) peSymbol = sym
+                    }
+                }
+            }
+        }
+    }
+
+    if (ceSymbol.isEmpty()) ceSymbol = "NSE:NIFTY26930${atmStrike.toInt()}CE"
+    if (peSymbol.isEmpty()) peSymbol = "NSE:NIFTY26930${atmStrike.toInt()}PE"
+
+    println("Target ATM CE Symbol: $ceSymbol")
+    println("Target ATM PE Symbol: $peSymbol")
+
+    // Step 8: Fetch Historical Data for ATM PE on Sep 1st, 2026
+    println("\n[8] Fetching Expired F&O Historical Data for ATM PE ($peSymbol) on $targetDateStr...")
+    val peHistory = viewModel.fetchHistoryFNOExpired(
+        appId = appId,
+        accessToken = token,
+        fnoSymbol = peSymbol,
+        rangeFrom = targetDateStr,
+        rangeTo = targetDateStr,
+        resolution = "1"
     )
     if (peHistory != null) {
-        println("\nNIFTY 22500 PE HISTORICAL DATA:")
+        println("\nATM PE EXPIRED HISTORICAL DATA:")
         println(peHistory.toString(4))
     } else {
-        println("\nFailed to fetch Nifty 22500 PE historical data.")
+        println("\nFailed to fetch ATM PE expired historical data.")
     }
 
     return true
