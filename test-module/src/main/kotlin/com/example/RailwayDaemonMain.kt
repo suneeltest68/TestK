@@ -134,6 +134,9 @@ fun main() = runBlocking {
         println("🌅 [Daily Routine] Starting Trading Session...")
         println("--------------------------------------------------")
 
+        // Clear cached token at the start of every daily trading session
+        viewModel.clearToken()
+
         val cachedToken = viewModel.getCachedToken()
         var activeToken: String? = null
 

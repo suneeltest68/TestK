@@ -90,4 +90,8 @@ class AuthViewModel(private val repository: FyersRepository = FyersRepository())
     fun getCachedToken(): String? {
         return repository.getCachedToken()
     }
+
+    fun clearToken() {
+        repository.clearToken()
+    }
 }

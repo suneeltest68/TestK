@@ -2,7 +2,7 @@ package com.example.model
 
 data class TradeState(
     val symbol: String,
-    var status: String = "IDLE", // IDLE, ACTIVE, EXITED
+    var status: String = "IDLE", // IDLE, PENDING_LIMIT, PENDING_STOP_BUY, ACTIVE, EXITED
     var entryPrice: Double = 0.0,
     var stopLoss: Double = 0.0,
     var currentTpLevel: Int = 0, // 0 to 10

@@ -11,6 +11,19 @@ class FyersRepository {
 
     private val tokenFile = File("token.json")
 
+    init {
+        // Clear token on app startup
+        if (tokenFile.exists()) {
+            tokenFile.delete()
+        }
+    }
+
+    fun clearToken() {
+        if (tokenFile.exists()) {
+            tokenFile.delete()
+        }
+    }
+
     fun getLoginUrl(appId: String, redirectUri: String): String {
         try {
             val fyersClass = FyersClass.getInstance()

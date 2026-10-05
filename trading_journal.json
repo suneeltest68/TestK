@@ -1,0 +1,83 @@
+{
+    "stats": {
+        "cumulativePnl": 33309.88613925658,
+        "peakPnl": 35664.00228148091,
+        "winningTrades": 4,
+        "losingTrades": 3,
+        "totalTrades": 7,
+        "maxDrawdown": 2354.1161422243313
+    },
+    "trades": [
+        {
+            "entryPrice": 1099.407311585616,
+            "date": "2026-10-05",
+            "symbol": "NSE:BANKNIFTY26OCT54600CE",
+            "exitPrice": 1271.4438695136953,
+            "quantity": 60,
+            "exitReason": "STOP_LOSS",
+            "pnl": 10322.193475684753,
+            "timestamp": 1791172152974
+        },
+        {
+            "entryPrice": 1099.407311585616,
+            "date": "2026-10-05",
+            "symbol": "NSE:BANKNIFTY26OCT54600CE",
+            "exitPrice": 1271.4438695136953,
+            "quantity": 60,
+            "exitReason": "STOP_LOSS",
+            "pnl": 10322.193475684753,
+            "timestamp": 1791172267861
+        },
+        {
+            "entryPrice": 415.38089535207104,
+            "date": "2026-10-05",
+            "symbol": "BSE:SENSEX26O0872200PE",
+            "exitPrice": 392.7687943309911,
+            "quantity": 40,
+            "exitReason": "STOP_LOSS",
+            "pnl": -904.4840408431969,
+            "timestamp": 1791172351709
+        },
+        {
+            "entryPrice": 1099.407311585616,
+            "date": "2026-10-05",
+            "symbol": "NSE:BANKNIFTY26OCT54600CE",
+            "exitPrice": 1271.4438695136953,
+            "quantity": 60,
+            "exitReason": "STOP_LOSS",
+            "pnl": 10322.193475684753,
+            "timestamp": 1791172570557
+        },
+        {
+            "entryPrice": 477.0412745636243,
+            "date": "2026-10-05",
+            "symbol": "BSE:SENSEX26O0872300CE",
+            "exitPrice": 617.0889219453704,
+            "quantity": 40,
+            "exitReason": "STOP_LOSS",
+            "pnl": 5601.905895269845,
+            "timestamp": 1791173260053
+        },
+        {
+            "entryPrice": 94.94391691870929,
+            "date": "2026-10-05",
+            "symbol": "NSE:NIFTY26O0622550CE",
+            "exitPrice": 84.29841663516133,
+            "quantity": 130,
+            "exitReason": "STOP_LOSS",
+            "pnl": -1383.915036861235,
+            "timestamp": 1791176899895
+        },
+        {
+            "entryPrice": 477.0412745636243,
+            "date": "2026-10-05",
+            "symbol": "BSE:SENSEX26O0872300CE",
+            "exitPrice": 452.7862469295469,
+            "quantity": 40,
+            "exitReason": "STOP_LOSS",
+            "pnl": -970.2011053630963,
+            "timestamp": 1791177893364
+        }
+    ],
+    "errors": []
+}

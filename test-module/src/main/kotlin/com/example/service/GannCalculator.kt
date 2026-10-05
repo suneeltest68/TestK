@@ -7,13 +7,13 @@ import kotlin.math.round
 object GannCalculator {
     fun calculate(pdc: Double): GannLevels {
         val sqCal = sqrt(pdc)
-        val bsl = (sqCal - 0.0625) * (sqCal - 0.0625)
-        val bt2 = (sqCal + 0.5) * (sqCal + 0.5)
+        val bsl = round(((sqCal - 0.0625) * (sqCal - 0.0625)) * 100.0) / 100.0
+        val bt2 = round(((sqCal + 0.5) * (sqCal + 0.5)) * 100.0) / 100.0
         
         val targetsList = mutableListOf<Double>()
         for (i in 1..50) {
             val t = (sqCal + (i * 0.5 + 0.5)) * (sqCal + (i * 0.5 + 0.5))
-            targetsList.add(t)
+            targetsList.add(round(t * 100.0) / 100.0)
         }
 
         return GannLevels(

@@ -14,7 +14,7 @@ java {
 }
 
 application {
-    mainClass.set("com.example.RailwayDaemonMainKt")
+    mainClass.set("com.example.CurrentExpiryMainKt")
 }
 
 dependencies {

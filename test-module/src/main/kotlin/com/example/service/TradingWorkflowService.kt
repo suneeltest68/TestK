@@ -16,6 +16,8 @@ import java.time.LocalDate
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.LocalTime
+import java.time.Duration
 import kotlin.math.round
 
 class TradingWorkflowService(private val viewModel: AuthViewModel) {
@@ -23,9 +25,30 @@ class TradingWorkflowService(private val viewModel: AuthViewModel) {
     private val symbolsGannMap = mutableMapOf<String, GannLevels>()
     private val quantitiesMap = mutableMapOf<String, Int>()
 
+    private suspend fun waitForMarketOpen() {
+        val istZone = ZoneId.of("Asia/Kolkata")
+        val marketOpenTime = LocalTime.of(9, 15)
+
+        while (true) {
+            val now = LocalTime.now(istZone)
+            if (now.isAfter(marketOpenTime) || now == marketOpenTime) {
+                println("[Market Open] It is 9:15 AM IST or later ($now). Proceeding with trading workflow...")
+                break
+            }
+
+            val waitDurationMillis = Duration.between(now, marketOpenTime).toMillis()
+            println("[Waiting] Current time (IST): $now. Waiting until market open at 9:15 AM IST (${waitDurationMillis / 1000} seconds remaining)...")
+            
+            delay(minOf(waitDurationMillis, 30_000L))
+        }
+    }
+
     suspend fun executeCurrentExpiryWorkflow(appId: String, token: String) {
-        // Use today's date or fall back to latest trading day if live
-        val targetDateStr = "2026-10-01"
+        // Wait until 9:15 AM IST before fetching opening data and starting workflow
+        waitForMarketOpen()
+
+        // Use today's date in IST
+        val targetDateStr = LocalDate.now(ZoneId.of("Asia/Kolkata")).toString()
         println("Target Execution Date: $targetDateStr")
 
         // Execute Nifty, Bank Nifty, and Sensex workflows concurrently using Coroutines with rate-limiting delays
@@ -232,7 +255,6 @@ class TradingWebSocketListener(
             val symbol = scrips.optString("symbol", "")
             val ltp = scrips.optDouble("ltp", 0.0)
             if (symbol.isNotEmpty() && ltp > 0.0) {
-                println("[LTP TICK] $symbol -> LTP: $ltp")
                 tradingEngine.onTick(symbol, ltp)
             }
         }
