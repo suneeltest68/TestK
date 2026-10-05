@@ -19,6 +19,8 @@ class PaperTradingEngine(
     private val tradesMap = ConcurrentHashMap<String, TradeState>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
+    fun getTrade(symbol: String): TradeState? = tradesMap[symbol]
+
     init {
         // Start each trading session fresh by clearing any previous day's state file
         if (stateFile.exists()) {
@@ -47,13 +49,13 @@ class PaperTradingEngine(
         }
     }
 
-    fun onTick(symbol: String, ltp: Double) {
+    fun onTick(symbol: String, ltp: Double, testTime: LocalTime? = null) {
         val trade = tradesMap[symbol] ?: return
         val gann = symbolsGannMap[symbol] ?: return
 
         // Check EOD Auto Square-Off at 3:25 PM IST
         val istZone = ZoneId.of("Asia/Kolkata")
-        val now = LocalTime.now(istZone)
+        val now = testTime ?: LocalTime.now(istZone)
         val squareOffTime = LocalTime.of(15, 25)
         if (now.isAfter(squareOffTime) || now == squareOffTime) {
             try {
