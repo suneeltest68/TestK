@@ -68,6 +68,18 @@ fun main() = runBlocking {
                 val bytes = jsonStr.toByteArray(StandardCharsets.UTF_8)
                 exchange.sendResponseHeaders(200, bytes.size.toLong())
                 exchange.responseBody.use { it.write(bytes) }
+            } else if (path == "/api/active-trades") {
+                val file = listOf(
+                    File("active_trades.json"),
+                    File("../active_trades.json"),
+                    File("test-module/active_trades.json")
+                ).firstOrNull { it.exists() } ?: File("active_trades.json")
+                val jsonStr = if (file.exists()) file.readText() else "{}"
+                exchange.responseHeaders.set("Content-Type", "application/json; charset=UTF-8")
+                exchange.responseHeaders.set("Access-Control-Allow-Origin", "*")
+                val bytes = jsonStr.toByteArray(StandardCharsets.UTF_8)
+                exchange.sendResponseHeaders(200, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
             } else if (path == "/callback") {
                 val query = exchange.requestURI.query ?: ""
                 val queryParams = query.split("&").associate {

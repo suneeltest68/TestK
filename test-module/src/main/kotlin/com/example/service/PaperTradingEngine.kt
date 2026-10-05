@@ -125,11 +125,24 @@ class PaperTradingEngine(
                 if (ltp <= trade.stopLoss) {
                     try {
                         val pnl = (trade.stopLoss - trade.entryPrice) * trade.quantity
-                        val msg = "[STOP LOSS HIT] $symbol | Entry: ${String.format("%.2f", trade.entryPrice)} | SL: ${String.format("%.2f", trade.stopLoss)} | TP Level (Count): ${trade.currentTpLevel} | LTP: ${String.format("%.2f", ltp)} | Est P&L: ${String.format("%.2f", pnl)}"
+                        
+                        val exitType = when {
+                            trade.currentTpLevel == 0 -> "ACTUAL_SL"
+                            trade.currentTpLevel == 1 -> "COST_TO_COST"
+                            else -> "TRAILING_SL"
+                        }
+
+                        val tag = when (exitType) {
+                            "ACTUAL_SL" -> "ACTUAL SL HIT"
+                            "COST_TO_COST" -> "COST TO COST (C2C) SL HIT"
+                            else -> "TRAILING SL HIT"
+                        }
+
+                        val msg = "[$tag] $symbol | Entry: ${String.format("%.2f", trade.entryPrice)} | SL: ${String.format("%.2f", trade.stopLoss)} | TP Level: ${trade.currentTpLevel} | LTP: ${String.format("%.2f", ltp)} | Est P&L: ${String.format("%.2f", pnl)}"
                         println(msg)
                         scope.launch { TelegramNotifier.sendAlert(msg) }
 
-                        TradingJournalService.logTrade(TradeJournalEntry(symbol, trade.entryPrice, trade.stopLoss, trade.quantity, pnl, "STOP_LOSS"))
+                        TradingJournalService.logTrade(TradeJournalEntry(symbol, trade.entryPrice, trade.stopLoss, trade.quantity, pnl, exitType))
 
                         trade.status = "EXITED"
                         saveState()
