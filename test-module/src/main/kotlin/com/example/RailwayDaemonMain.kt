@@ -54,10 +54,14 @@ fun main() = runBlocking {
     // Start 24/7 Background HTTP Server for Website Dashboard, API, and OAuth Callback
     val server = HttpServer.create(InetSocketAddress(port), 0)
     server.createContext("/") { exchange ->
-        val path = exchange.requestURI.path
+        val path = exchange.requestURI.path?.removeSuffix("/") ?: ""
         try {
             if (path == "/api/journal" || path == "/journal") {
-                val file = File("trading_journal.json")
+                val file = listOf(
+                    File("trading_journal.json"),
+                    File("../trading_journal.json"),
+                    File("test-module/trading_journal.json")
+                ).firstOrNull { it.exists() } ?: File("trading_journal.json")
                 val jsonStr = if (file.exists()) file.readText() else "{\"trades\":[],\"stats\":{}}"
                 exchange.responseHeaders.set("Content-Type", "application/json; charset=UTF-8")
                 exchange.responseHeaders.set("Access-Control-Allow-Origin", "*")
@@ -91,7 +95,11 @@ fun main() = runBlocking {
                 }
             } else {
                 // Serve Gann Trading Journal Dashboard (journal-web/index.html)
-                val file = File("journal-web/index.html")
+                val file = listOf(
+                    File("journal-web/index.html"),
+                    File("../journal-web/index.html"),
+                    File("test-module/journal-web/index.html")
+                ).firstOrNull { it.exists() } ?: File("journal-web/index.html")
                 val htmlStr = if (file.exists()) file.readText() else "<h1>Gann Trading Journal</h1><p>index.html not found.</p>"
                 exchange.responseHeaders.set("Content-Type", "text/html; charset=UTF-8")
                 val bytes = htmlStr.toByteArray(StandardCharsets.UTF_8)
