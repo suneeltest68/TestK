@@ -145,6 +145,7 @@ class PaperTradingEngine(
                         TradingJournalService.logTrade(TradeJournalEntry(symbol, trade.entryPrice, trade.stopLoss, trade.quantity, pnl, exitType))
 
                         trade.status = "EXITED"
+                        trade.priceBelowEntrySeen = (ltp < trade.entryPrice)
                         saveState()
                     } catch (e: Exception) {
                         TradingJournalService.logError("Stop loss error for $symbol: ${e.message}")
@@ -168,7 +169,11 @@ class PaperTradingEngine(
                 }
             }
             "EXITED" -> {
-                if (ltp >= trade.entryPrice) {
+                if (!trade.priceBelowEntrySeen && ltp < trade.entryPrice) {
+                    trade.priceBelowEntrySeen = true
+                    saveState()
+                }
+                if (trade.priceBelowEntrySeen && ltp >= trade.entryPrice) {
                     val msg = "[RE-ENTRY TRIGGERED] $symbol re-opened at Buy Price: ${String.format("%.2f", trade.entryPrice)} | LTP: ${String.format("%.2f", ltp)}"
                     println(msg)
                     scope.launch { TelegramNotifier.sendAlert(msg) }
@@ -177,6 +182,7 @@ class PaperTradingEngine(
                     trade.stopLoss = gann.stopLoss
                     trade.currentTpLevel = 0
                     trade.entryTime = System.currentTimeMillis()
+                    trade.priceBelowEntrySeen = false
                     saveState()
                 }
             }
@@ -217,7 +223,8 @@ class PaperTradingEngine(
                         stopLoss = obj.getDouble("stopLoss"),
                         currentTpLevel = obj.getInt("currentTpLevel"),
                         quantity = obj.getInt("quantity"),
-                        entryTime = obj.getLong("entryTime")
+                        entryTime = obj.getLong("entryTime"),
+                        priceBelowEntrySeen = obj.optBoolean("priceBelowEntrySeen", false)
                     )
                     tradesMap[trade.symbol] = trade
                 }
@@ -237,6 +244,7 @@ class PaperTradingEngine(
                     put("currentTpLevel", trade.currentTpLevel)
                     put("quantity", trade.quantity)
                     put("entryTime", trade.entryTime)
+                    put("priceBelowEntrySeen", trade.priceBelowEntrySeen)
                 }
                 json.put(symbol, obj)
             }

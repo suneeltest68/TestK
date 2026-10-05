@@ -8,5 +8,6 @@ data class TradeState(
     var currentTpLevel: Int = 0, // 0 to 10
     var targets: List<Double> = emptyList(),
     var quantity: Int = 0,
-    var entryTime: Long = 0L
+    var entryTime: Long = 0L,
+    var priceBelowEntrySeen: Boolean = false
 )
