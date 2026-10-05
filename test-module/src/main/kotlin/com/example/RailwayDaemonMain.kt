@@ -194,6 +194,15 @@ fun main() = runBlocking {
         if (activeToken != null) {
             try {
                 workflowService.executeCurrentExpiryWorkflow(appId, activeToken)
+
+                // Keep daemon alive during market hours until 3:35 PM IST today
+                val now = ZonedDateTime.now(istZone)
+                val marketCloseTimeToday = now.withHour(15).withMinute(35).withSecond(0).withNano(0)
+                if (now.isBefore(marketCloseTimeToday)) {
+                    val waitDuration = Duration.between(now, marketCloseTimeToday).toMillis()
+                    println("[Daemon] Trading session active. Waiting until market close at 3:35 PM IST (${waitDuration / 1000 / 60} minutes remaining)...")
+                    delay(waitDuration)
+                }
             } catch (e: Exception) {
                 println("[Daemon Error] Workflow exception: ${e.message}")
                 TelegramNotifier.sendAlert("❌ [Fyers Daemon] Error during execution: ${e.message}")

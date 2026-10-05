@@ -125,7 +125,7 @@ class PaperTradingEngine(
                 if (ltp <= trade.stopLoss) {
                     try {
                         val pnl = (trade.stopLoss - trade.entryPrice) * trade.quantity
-                        val msg = "[STOP LOSS HIT] $symbol exited at SL: ${String.format("%.2f", trade.stopLoss)} | LTP: ${String.format("%.2f", ltp)} | Est P&L: ${String.format("%.2f", pnl)}"
+                        val msg = "[STOP LOSS HIT] $symbol | Entry: ${String.format("%.2f", trade.entryPrice)} | SL: ${String.format("%.2f", trade.stopLoss)} | TP Level (Count): ${trade.currentTpLevel} | LTP: ${String.format("%.2f", ltp)} | Est P&L: ${String.format("%.2f", pnl)}"
                         println(msg)
                         scope.launch { TelegramNotifier.sendAlert(msg) }
 
@@ -150,7 +150,6 @@ class PaperTradingEngine(
                         } else {
                             trade.stopLoss = targets[trade.currentTpLevel - 2]
                         }
-//                        println("[TARGET ${trade.currentTpLevel} HIT] $symbol reached TP${trade.currentTpLevel} ($nextTarget)! Trailing SL updated.")
                         saveState()
                     }
                 }
