@@ -5,6 +5,12 @@ import com.example.model.GannLevels
 import com.tts.`in`.websocket.FyersSocket
 import com.tts.`in`.websocket.FyersSocketDelegate
 import `in`.tts.hsjavalib.ChannelModes
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -78,8 +84,8 @@ class TradingWorkflowService(private val viewModel: AuthViewModel) {
             tradingEngine.printStatus()
 
             println("\n[12] Connecting to Fyers WebSocket for live streaming of the collected strikes...")
-            val wsListener = TradingWebSocketListener(tradingEngine, symbolsGannMap.keys.toList())
-            wsListener.start()
+            val wsClient = OkHttpFyersWebSocketClient(appId, token, symbolsGannMap.keys.toList(), tradingEngine)
+            wsClient.start()
         } else {
             println("\nNo strikes collected for paper trading.")
         }
@@ -231,58 +237,130 @@ class TradingWorkflowService(private val viewModel: AuthViewModel) {
     }
 }
 
-class TradingWebSocketListener(
-    private val tradingEngine: PaperTradingEngine,
-    private val subscribedSymbols: List<String>
-) : FyersSocketDelegate {
+class OkHttpFyersWebSocketClient(
+    private val appId: String,
+    private val accessToken: String,
+    private val subscribedSymbols: List<String>,
+    private val tradingEngine: PaperTradingEngine
+) {
+    private val client = OkHttpClient.Builder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .pingInterval(15, TimeUnit.SECONDS)
+        .build()
 
-    private var fyersSocket: FyersSocket? = null
+    private var webSocket: WebSocket? = null
 
     fun start() {
-        try {
-            fyersSocket = FyersSocket(3).apply {
-                webSocketDelegate = this@TradingWebSocketListener
-                ConnectHSM(ChannelModes.LITE)
+        val authHeader = "$appId:$accessToken"
+        val url = "wss://socket.fyers.in/hsm/v1-5/prod?access_token=$authHeader"
+
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $authHeader")
+            .build()
+
+        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                println("✅ OkHttp Fyers WebSocket Connected!")
+                val subObj = JSONObject().apply {
+                    put("symbol", subscribedSymbols)
+                    put("data_type", "symbolUpdate")
+                    put("sub_type", "lite")
+                }
+                webSocket.send(subObj.toString())
+                println("WebSocket subscribed to symbols: $subscribedSymbols")
             }
-        } catch (e: Exception) {
-            println("WebSocket Start Error: ${e.message}")
-        }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                try {
+                    val json = JSONObject(text)
+                    val symbol = json.optString("symbol", "")
+                    val ltp = json.optDouble("ltp", 0.0)
+                    if (symbol.isNotEmpty() && ltp > 0.0) {
+                        tradingEngine.onTick(symbol, ltp)
+                    }
+                } catch (e: Exception) {
+                    println("WebSocket parse error: ${e.message} | Text: $text")
+                }
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                println("⚠️ OkHttp Fyers WebSocket Closed: $code / $reason")
+                CoroutineScope(Dispatchers.IO).launch {
+                    TelegramNotifier.sendAlert("⚠️ [WebSocket Closed] $code: $reason")
+                }
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                println("❌ OkHttp Fyers WebSocket Failure: ${t.message}")
+                CoroutineScope(Dispatchers.IO).launch {
+                    TelegramNotifier.sendAlert("❌ [WebSocket Error] ${t.message}")
+                }
+            }
+        })
     }
 
-    override fun OnIndex(index: JSONObject?) {}
-    override fun OnScrips(scrips: JSONObject?) {
-        if (scrips != null) {
-            val symbol = scrips.optString("symbol", "")
-            val ltp = scrips.optDouble("ltp", 0.0)
-            if (symbol.isNotEmpty() && ltp > 0.0) {
-                tradingEngine.onTick(symbol, ltp)
+    fun stop() {
+        webSocket?.close(1000, "Client shutdown")
+        webSocket = null
+    }
+
+/*
+    class TradingWebSocketListener(
+        private val tradingEngine: PaperTradingEngine,
+        private val subscribedSymbols: List<String>
+    ) : FyersSocketDelegate {
+
+        private var fyersSocket: FyersSocket? = null
+
+        fun start() {
+            try {
+                fyersSocket = FyersSocket(3).apply {
+                    webSocketDelegate = this@TradingWebSocketListener
+                    ConnectHSM(ChannelModes.LITE)
+                }
+            } catch (e: Exception) {
+                println("WebSocket Start Error: ${e.message}")
             }
         }
-    }
-    override fun OnDepth(depths: JSONObject?) {}
-    override fun OnOrder(orders: JSONObject?) {}
-    override fun OnTrade(trades: JSONObject?) {}
-    override fun OnPosition(positions: JSONObject?) {}
-    override fun OnOpen(status: String?) {
-        println("WebSocket Connected: $status")
-        try {
-            fyersSocket?.SubscribeData(subscribedSymbols)
-            println("WebSocket subscribed to symbols: $subscribedSymbols")
-        } catch (e: Exception) {
-            println("WebSocket Subscribe Error: ${e.message}")
+
+        override fun OnIndex(index: JSONObject?) {}
+        override fun OnScrips(scrips: JSONObject?) {
+            if (scrips != null) {
+                val symbol = scrips.optString("symbol", "")
+                val ltp = scrips.optDouble("ltp", 0.0)
+                if (symbol.isNotEmpty() && ltp > 0.0) {
+                    tradingEngine.onTick(symbol, ltp)
+                }
+            }
         }
-    }
-    override fun OnClose(status: String?) {
-        println("WebSocket Closed: $status")
-        CoroutineScope(Dispatchers.IO).launch {
-            TelegramNotifier.sendAlert("⚠️ [WebSocket Closed] $status")
+        override fun OnDepth(depths: JSONObject?) {}
+        override fun OnOrder(orders: JSONObject?) {}
+        override fun OnTrade(trades: JSONObject?) {}
+        override fun OnPosition(positions: JSONObject?) {}
+        override fun OnOpen(status: String?) {
+            println("WebSocket Connected: $status")
+            try {
+                fyersSocket?.SubscribeData(subscribedSymbols)
+                println("WebSocket subscribed to symbols: $subscribedSymbols")
+            } catch (e: Exception) {
+                println("WebSocket Subscribe Error: ${e.message}")
+            }
         }
-    }
-    override fun OnError(error: JSONObject?) {
-        println("WebSocket Error: $error")
-        CoroutineScope(Dispatchers.IO).launch {
-            TelegramNotifier.sendAlert("❌ [WebSocket Error] $error")
+        override fun OnClose(status: String?) {
+            println("WebSocket Closed: $status")
+            CoroutineScope(Dispatchers.IO).launch {
+                TelegramNotifier.sendAlert("⚠️ [WebSocket Closed] $status")
+            }
         }
+        override fun OnError(error: JSONObject?) {
+            println("WebSocket Error: $error")
+            CoroutineScope(Dispatchers.IO).launch {
+                TelegramNotifier.sendAlert("❌ [WebSocket Error] $error")
+            }
+        }
+        override fun OnMessage(message: JSONObject?) {}
     }
-    override fun OnMessage(message: JSONObject?) {}
+*/
+
 }
