@@ -130,4 +130,23 @@ class PaperTradingEngineTest {
         engine.onTick("NIFTY", 100.0, testTime)
         assertEquals("ACTIVE", engine.getTrade("NIFTY")?.status)
     }
+
+    @Test
+    fun testAutoSquareOffAt325() {
+        val gann = GannLevels(
+            previousClose = 100.0,
+            stopLoss = 85.0,
+            buyPrice = 100.0,
+            targets = listOf(110.0, 120.0, 130.0)
+        )
+        val engine = PaperTradingEngine(mapOf("NIFTY" to gann), mapOf("NIFTY" to 50))
+
+        // Activate trade at 10:00 AM
+        engine.onTick("NIFTY", 100.0, LocalTime.of(10, 0))
+        assertEquals("ACTIVE", engine.getTrade("NIFTY")?.status)
+
+        // Tick at 3:25 PM -> should auto square-off
+        engine.onTick("NIFTY", 105.0, LocalTime.of(15, 25))
+        assertEquals("EXITED", engine.getTrade("NIFTY")?.status)
+    }
 }

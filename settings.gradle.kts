@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "RunKoltin"
+rootProject.name = "Gann"
 include(":test-module")

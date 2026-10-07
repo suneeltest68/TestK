@@ -13,7 +13,13 @@ data class TradeJournalEntry(
     val pnl: Double,
     val exitReason: String,
     val date: String = LocalDate.now().toString(),
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val entryTime: Long = 0L,
+    val exitTime: Long = 0L,
+    val tpLevel: Int = 0,
+    val stopLoss: Double = 0.0,
+    val initialStopLoss: Double = 0.0,
+    val targets: List<Double> = emptyList()
 )
 
 object TradingJournalService {
@@ -33,6 +39,12 @@ object TradingJournalService {
                 put("exitReason", entry.exitReason)
                 put("date", entry.date)
                 put("timestamp", entry.timestamp)
+                put("entryTime", entry.entryTime)
+                put("exitTime", entry.exitTime)
+                put("tpLevel", entry.tpLevel)
+                put("stopLoss", entry.stopLoss)
+                put("initialStopLoss", entry.initialStopLoss)
+                put("targets", JSONArray(entry.targets))
             }
             tradesArray.put(tradeObj)
             root.put("trades", tradesArray)

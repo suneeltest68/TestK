@@ -19,6 +19,16 @@ class PaperTradingEngine(
     private val tradesMap = ConcurrentHashMap<String, TradeState>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
+    var onTradeCompleted: ((TradeJournalEntry) -> Unit)? = null
+
+    private fun recordTrade(entry: TradeJournalEntry) {
+        if (onTradeCompleted != null) {
+            onTradeCompleted?.invoke(entry)
+        } else {
+            TradingJournalService.logTrade(entry)
+        }
+    }
+
     fun getTrade(symbol: String): TradeState? = tradesMap[symbol]
 
     init {
@@ -35,6 +45,7 @@ class PaperTradingEngine(
                     symbol = symbol,
                     status = "IDLE",
                     stopLoss = gann.stopLoss,
+                    initialStopLoss = gann.stopLoss,
                     entryPrice = gann.buyPrice,
                     targets = gann.targets,
                     quantity = qty
@@ -43,15 +54,17 @@ class PaperTradingEngine(
                 existing.entryPrice = gann.buyPrice
                 if (existing.status == "IDLE") {
                     existing.stopLoss = gann.stopLoss
+                    existing.initialStopLoss = gann.stopLoss
                 }
                 existing.targets = gann.targets
             }
         }
     }
 
-    fun onTick(symbol: String, ltp: Double, testTime: LocalTime? = null) {
+    fun onTick(symbol: String, ltp: Double, testTime: LocalTime? = null, testTimestamp: Long = 0L) {
         val trade = tradesMap[symbol] ?: return
         val gann = symbolsGannMap[symbol] ?: return
+        val ts = if (testTimestamp > 0) testTimestamp else System.currentTimeMillis()
 
         // Check EOD Auto Square-Off at 3:25 PM IST
         val istZone = ZoneId.of("Asia/Kolkata")
@@ -61,11 +74,12 @@ class PaperTradingEngine(
             try {
                 if (trade.status == "ACTIVE") {
                     val pnl = (ltp - trade.entryPrice) * trade.quantity
-                    val msg = "[AUTO SQUARE-OFF] 3:25 PM EOD reached! Force exiting $symbol at LTP ${String.format("%.2f", ltp)} | P&L: ${String.format("%.2f", pnl)}"
+                    val msg = "[AUTO SQUARE-OFF @ $now] 3:25 PM EOD reached! Force exiting $symbol at LTP ${String.format("%.2f", ltp)} | P&L: ${String.format("%.2f", pnl)}"
                     println(msg)
                     scope.launch { TelegramNotifier.sendAlert(msg) }
                     
-                    TradingJournalService.logTrade(TradeJournalEntry(symbol, trade.entryPrice, ltp, trade.quantity, pnl, "AUTO_SQUARE_OFF"))
+                    trade.exitTime = ts
+                    recordTrade(TradeJournalEntry(symbol, trade.entryPrice, ltp, trade.quantity, pnl, "AUTO_SQUARE_OFF", entryTime = trade.entryTime, exitTime = trade.exitTime, tpLevel = trade.currentTpLevel, stopLoss = trade.stopLoss, initialStopLoss = trade.initialStopLoss, targets = trade.targets))
 
                     trade.status = "EXITED"
                     saveState()
@@ -81,44 +95,44 @@ class PaperTradingEngine(
             "IDLE" -> {
                 if (ltp > trade.entryPrice) {
                     trade.status = "PENDING_LIMIT"
-                    println("[PENDING LIMIT ORDER] $symbol placed at Entry Price: ${String.format("%.2f", trade.entryPrice)} (Current LTP: ${String.format("%.2f", ltp)}). Waiting for price to drop.")
+                    println("[PENDING LIMIT ORDER @ $now] $symbol placed at Entry Price: ${String.format("%.2f", trade.entryPrice)} (Current LTP: ${String.format("%.2f", ltp)}). Waiting for price to drop.")
                     saveState()
                 } else if (ltp < trade.entryPrice) {
                     trade.status = "PENDING_STOP_BUY"
-                    println("[PENDING STOP BUY] $symbol placed at Entry Price: ${String.format("%.2f", trade.entryPrice)} (Current LTP: ${String.format("%.2f", ltp)}). Waiting for price to rise.")
+                    println("[PENDING STOP BUY @ $now] $symbol placed at Entry Price: ${String.format("%.2f", trade.entryPrice)} (Current LTP: ${String.format("%.2f", ltp)}). Waiting for price to rise.")
                     saveState()
                 } else {
-                    val msg = "[TRADE PLACED] $symbol at Entry: ${String.format("%.2f", trade.entryPrice)} | Qty: ${trade.quantity} | LTP: ${String.format("%.2f", ltp)}"
+                    val msg = "[TRADE PLACED @ $now] $symbol at Entry: ${String.format("%.2f", trade.entryPrice)} | Qty: ${trade.quantity} | LTP: ${String.format("%.2f", ltp)}"
                     println(msg)
                     scope.launch { TelegramNotifier.sendAlert(msg) }
 
                     trade.status = "ACTIVE"
                     trade.currentTpLevel = 0
-                    trade.entryTime = System.currentTimeMillis()
+                    trade.entryTime = ts
                     saveState()
                 }
             }
             "PENDING_LIMIT" -> {
                 if (ltp <= trade.entryPrice) {
-                    val msg = "[TRADE PLACED (LIMIT TRIGGERED)] $symbol at Entry: ${String.format("%.2f", trade.entryPrice)} | Qty: ${trade.quantity} | LTP: ${String.format("%.2f", ltp)}"
+                    val msg = "[TRADE PLACED (LIMIT TRIGGERED) @ $now] $symbol at Entry: ${String.format("%.2f", trade.entryPrice)} | Qty: ${trade.quantity} | LTP: ${String.format("%.2f", ltp)}"
                     println(msg)
                     scope.launch { TelegramNotifier.sendAlert(msg) }
 
                     trade.status = "ACTIVE"
                     trade.currentTpLevel = 0
-                    trade.entryTime = System.currentTimeMillis()
+                    trade.entryTime = ts
                     saveState()
                 }
             }
             "PENDING_STOP_BUY" -> {
                 if (ltp >= trade.entryPrice) {
-                    val msg = "[TRADE PLACED (STOP BUY TRIGGERED)] $symbol at Entry: ${String.format("%.2f", trade.entryPrice)} | Qty: ${trade.quantity} | LTP: ${String.format("%.2f", ltp)}"
+                    val msg = "[TRADE PLACED (STOP BUY TRIGGERED) @ $now] $symbol at Entry: ${String.format("%.2f", trade.entryPrice)} | Qty: ${trade.quantity} | LTP: ${String.format("%.2f", ltp)}"
                     println(msg)
                     scope.launch { TelegramNotifier.sendAlert(msg) }
 
                     trade.status = "ACTIVE"
                     trade.currentTpLevel = 0
-                    trade.entryTime = System.currentTimeMillis()
+                    trade.entryTime = ts
                     saveState()
                 }
             }
@@ -140,11 +154,12 @@ class PaperTradingEngine(
                             else -> "TRAILING SL HIT"
                         }
 
-                        val msg = "[$tag] $symbol | Entry: ${String.format("%.2f", trade.entryPrice)} | SL: ${String.format("%.2f", trade.stopLoss)} | TP Level: ${trade.currentTpLevel} | LTP: ${String.format("%.2f", ltp)} | Est P&L: ${String.format("%.2f", pnl)}"
+                        val msg = "[$tag @ $now] $symbol | Entry: ${String.format("%.2f", trade.entryPrice)} | SL: ${String.format("%.2f", trade.stopLoss)} | TP Level: ${trade.currentTpLevel} | LTP: ${String.format("%.2f", ltp)} | Est P&L: ${String.format("%.2f", pnl)}"
                         println(msg)
                         scope.launch { TelegramNotifier.sendAlert(msg) }
 
-                        TradingJournalService.logTrade(TradeJournalEntry(symbol, trade.entryPrice, trade.stopLoss, trade.quantity, pnl, exitType))
+                        trade.exitTime = ts
+                        recordTrade(TradeJournalEntry(symbol, trade.entryPrice, trade.stopLoss, trade.quantity, pnl, exitType, entryTime = trade.entryTime, exitTime = trade.exitTime, tpLevel = trade.currentTpLevel, stopLoss = trade.stopLoss, initialStopLoss = trade.initialStopLoss, targets = trade.targets))
 
                         trade.status = "EXITED"
                         trade.priceBelowEntrySeen = (ltp < trade.entryPrice)
@@ -183,7 +198,7 @@ class PaperTradingEngine(
                     trade.status = "ACTIVE"
                     trade.stopLoss = gann.stopLoss
                     trade.currentTpLevel = 0
-                    trade.entryTime = System.currentTimeMillis()
+                    trade.entryTime = ts
                     trade.priceBelowEntrySeen = false
                     saveState()
                 }
