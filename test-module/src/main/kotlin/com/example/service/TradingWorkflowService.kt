@@ -84,8 +84,10 @@ class TradingWorkflowService(private val viewModel: AuthViewModel) {
             tradingEngine.printStatus()
 
             println("\n[12] Connecting to Fyers WebSocket for live streaming of the collected strikes...")
-            val wsClient = OkHttpFyersWebSocketClient(appId, token, symbolsGannMap.keys.toList(), tradingEngine)
-            wsClient.start()
+            /*val wsClient = OkHttpFyersWebSocketClient(appId, token, symbolsGannMap.keys.toList(), tradingEngine)
+            wsClient.start()*/
+            val wsListener = TradingWebSocketListener(tradingEngine, symbolsGannMap.keys.toList())
+            wsListener.start()
         } else {
             println("\nNo strikes collected for paper trading.")
         }
@@ -274,6 +276,7 @@ class OkHttpFyersWebSocketClient(
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
+                    println("${json.optString("symbol", "")} ${json.optDouble("ltp", 0.0)}")
                     val symbol = json.optString("symbol", "")
                     val ltp = json.optDouble("ltp", 0.0)
                     if (symbol.isNotEmpty() && ltp > 0.0) {
@@ -305,7 +308,9 @@ class OkHttpFyersWebSocketClient(
         webSocket = null
     }
 
-/*
+
+}
+
     class TradingWebSocketListener(
         private val tradingEngine: PaperTradingEngine,
         private val subscribedSymbols: List<String>
@@ -326,6 +331,7 @@ class OkHttpFyersWebSocketClient(
 
         override fun OnIndex(index: JSONObject?) {}
         override fun OnScrips(scrips: JSONObject?) {
+//            println("${scrips?.optString("symbol", "")} ${scrips?.optDouble("ltp", 0.0)}")
             if (scrips != null) {
                 val symbol = scrips.optString("symbol", "")
                 val ltp = scrips.optDouble("ltp", 0.0)
@@ -361,6 +367,4 @@ class OkHttpFyersWebSocketClient(
         }
         override fun OnMessage(message: JSONObject?) {}
     }
-*/
 
-}

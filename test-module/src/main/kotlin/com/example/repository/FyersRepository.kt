@@ -13,9 +13,9 @@ class FyersRepository {
 
     init {
         // Clear token on app startup
-        if (tokenFile.exists()) {
+        /*if (tokenFile.exists()) {
             tokenFile.delete()
-        }
+        }*/
     }
 
     fun clearToken() {

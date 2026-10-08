@@ -37,15 +37,64 @@ class AuthViewModel(private val repository: FyersRepository = FyersRepository())
         )
     }
 
-    suspend fun fetchHistoricalData(appId: String, accessToken: String, symbol: String, resolution: String, rangeFrom: String, rangeTo: String): JSONObject? {
+    suspend fun fetchHistoricalData(appId: String, accessToken: String, symbol: String, resolution: String, rangeFrom: String, rangeTo: String,showError: Boolean = true): JSONObject? {
         return withContext(Dispatchers.IO) {
             val result = repository.getHistoricalData(appId, accessToken, symbol, resolution, rangeFrom, rangeTo)
             if (result.isFailure) {
-                println("Historical Data Error for $symbol: ${result.exceptionOrNull()?.message}")
+                if (showError)
+                    println("Historical Data Error for $symbol: ${result.exceptionOrNull()?.message}")
             }
             result.getOrNull()
         }
     }
+
+    suspend fun fetchHistoricalDataInChunks(appId: String, accessToken: String, symbol: String, resolution: String, rangeFrom: String, rangeTo: String): JSONObject? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val startLocalDate = java.time.LocalDate.parse(rangeFrom)
+                val endLocalDate = java.time.LocalDate.parse(rangeTo)
+
+                val allCandles = org.json.JSONArray()
+                var currentStart = startLocalDate
+
+                while (currentStart.isBefore(endLocalDate) || currentStart.isEqual(endLocalDate)) {
+                    val currentEnd = currentStart.plusDays(89).let { if (it.isAfter(endLocalDate)) endLocalDate else it }
+
+                    val chunkFrom = currentStart.toString()
+                    val chunkTo = currentEnd.toString()
+//                    println("Fetching Fyers history chunk: $chunkFrom to $chunkTo")
+
+                    val result = repository.getHistoricalData(appId, accessToken, symbol, resolution, chunkFrom, chunkTo)
+                    if (result.isSuccess) {
+                        val json = result.getOrNull()
+                        val candles = json?.optJSONArray("candles")
+                        if (candles != null) {
+                            for (i in 0 until candles.length()) {
+                                allCandles.put(candles.getJSONArray(i))
+                            }
+                        }
+                    } else {
+//                        println("Warning: Failed to fetch chunk $chunkFrom to $chunkTo: ${result.exceptionOrNull()?.message}")
+                    }
+
+                    currentStart = currentEnd.plusDays(1)
+                }
+
+                if (allCandles.length() > 0) {
+                    org.json.JSONObject().apply {
+                        put("s", "ok")
+                        put("candles", allCandles)
+                    }
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                println("Chunked historical data error: ${e.message}")
+                null
+            }
+        }
+    }
+
 
     suspend fun fetchOptionChain(appId: String, accessToken: String, symbol: String, strikeCount: Int): JSONObject? {
         return withContext(Dispatchers.IO) {
